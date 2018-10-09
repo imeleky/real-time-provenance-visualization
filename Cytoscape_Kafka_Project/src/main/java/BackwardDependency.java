@@ -77,6 +77,10 @@ public class BackwardDependency {
         System.out.println("-----------------------------");
     }
 
+    // @param element: A prov-o notification (an edge)
+    // @param node1Id: Node Id of source node
+    // @param node2Id: Node Id of dest node
+
     public static void updateState(Node element, String node1Id, String node2Id){
         String sourceNode;
         String destNode;
@@ -88,6 +92,7 @@ public class BackwardDependency {
             sourceNode   = getSourceNodeId(element, element.getNodeName().replace("prov:", ""));
             destNode     = getDestNodeId(element, element.getNodeName().replace("prov:", ""));
 
+            // if incoming source node is a new value of a variable then cache current state and remove source node from current stat
             if(varIdToNodeIdCurrent.containsKey(sourceNode) && varIdToNodeIdCurrent.get(sourceNode) != node1Id){
                 cacheDependencies();
 
@@ -99,14 +104,18 @@ public class BackwardDependency {
                 }
             }
 
+            // add new mapping sourceNode --> node1Id
             varIdToNodeIdCurrent.put(sourceNode, node1Id);
 
+            // If source node is not in the matrix, add it to the matrix and also to rows list
             if(!rowsCurrent.contains(sourceNode)){
                 rowsCurrent.add(sourceNode);
                 currentRowCount++;
                 stateCurrent = resize(stateCurrent, currentRowCount, currentColumnCount);
             }
 
+            // If destination node is not in the matrix, add it to the matrix and also to columns list
+            // After that, add new dependency sourceNode --> destNode
             if(!columnsCurrent.contains(destNode)){
                 columnsCurrent.add(destNode);
                 currentColumnCount++;
@@ -116,12 +125,14 @@ public class BackwardDependency {
                 stateCurrent[rowsCurrent.indexOf(sourceNode)][columnsCurrent.indexOf(destNode)] = 1;
             }
 
+            // If source node equals to destNode then get backward provenance from state.purge, else get it from state.current
             if(sourceNode.equals(destNode)){
                 inputVars = getBackwardProvenance(destNode, statePurge, rowsPurge, columnsPurge);
             }else {
                 inputVars = getBackwardProvenance(destNode,stateCurrent, rowsCurrent, columnsCurrent);
             }
 
+            // Update backward provenance of source node in state.current
             for(String var : inputVars){
                 stateCurrent[rowsCurrent.indexOf(sourceNode)][columnsCurrent.indexOf(var)] = 1;
             }
