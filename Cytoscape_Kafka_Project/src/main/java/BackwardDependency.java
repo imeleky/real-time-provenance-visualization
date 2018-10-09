@@ -11,6 +11,8 @@ public class BackwardDependency {
 
     private static Integer[][] stateCurrent;
     private static Integer[][] statePurge;
+    private static Integer currentRowCount;
+    private static Integer currentColumnCount;
     private static ArrayList<String> rowsCurrent;
     private static ArrayList<String> columnsCurrent;
     private static ArrayList<String> rowsPurge;
@@ -19,13 +21,13 @@ public class BackwardDependency {
     private static HashMap<String, String> varIdToNodeIdPurge;
     private static ArrayList<String> relations = new ArrayList<String>(Arrays.asList(
             "prov:wasAssociatedWith", "prov:wasInformedBy", "prov:used", "prov:wasDerivedFrom", "prov:wasGeneratedBy"));
-    private static Integer componentCount;
 
 
     public static void main(String[] args){
-        componentCount          = 0;
-        stateCurrent            = new Integer[componentCount][componentCount];
-        statePurge              = new Integer[componentCount][componentCount];
+        currentColumnCount      = 1;
+        currentRowCount         = 1;
+        stateCurrent            = new Integer[currentRowCount][currentColumnCount];
+        statePurge              = new Integer[currentRowCount][currentColumnCount];
         varIdToNodeIdCurrent    = new HashMap<>();
         varIdToNodeIdPurge      = new HashMap<>();
         rowsCurrent             = new ArrayList<>();
@@ -67,10 +69,12 @@ public class BackwardDependency {
     public static void printMatrix(Integer[][] matrix){
         for(int i=0; i<matrix.length; i++){
             for(int j=0; j<matrix[i].length; j++){
-                System.out.println(matrix[i][j] + " ");
+                System.out.print(matrix[i][j] + " ");
             }
             System.out.print("\n");
         }
+
+        System.out.println("-----------------------------");
     }
 
     public static void updateState(Node element, String node1Id, String node2Id){
@@ -81,13 +85,13 @@ public class BackwardDependency {
         // Check if this is an edge
         if(relations.contains(element.getNodeName())){
             // get source and destination nodes
-            sourceNode   = getSourceNodeId(element, "wasAssociatedWith");
-            destNode     = getDestNodeId(element, "wasAssociatedWith");
+            sourceNode   = getSourceNodeId(element, element.getNodeName().replace("prov:", ""));
+            destNode     = getDestNodeId(element, element.getNodeName().replace("prov:", ""));
 
             if(varIdToNodeIdCurrent.containsKey(sourceNode) && varIdToNodeIdCurrent.get(sourceNode) != node1Id){
                 cacheDependencies();
 
-                for(int i=0; i<componentCount; i++){
+                for(int i=0; i<currentRowCount; i++){
                     if(rowsCurrent.get(i).equals(sourceNode)){
                         rowsCurrent.remove(sourceNode);
                         stateCurrent = removeRow(i, stateCurrent);
@@ -95,16 +99,21 @@ public class BackwardDependency {
                 }
             }
 
-            // Üstteki if'in içine?
             varIdToNodeIdCurrent.put(sourceNode, node1Id);
 
-            if(columnsCurrent.contains(destNode)){
-                // Üstteki if'in else kısmına?
+            if(!rowsCurrent.contains(sourceNode)){
                 rowsCurrent.add(sourceNode);
+                currentRowCount++;
+                stateCurrent = resize(stateCurrent, currentRowCount, currentColumnCount);
+            }
+
+            if(!columnsCurrent.contains(destNode)){
                 columnsCurrent.add(destNode);
-                componentCount++;
-                stateCurrent = resize(stateCurrent, componentCount, componentCount);
+                currentColumnCount++;
+                stateCurrent = resize(stateCurrent, currentRowCount, currentColumnCount);
                 stateCurrent[rowsCurrent.size()-1][columnsCurrent.size()-1] = 1;
+            }else {
+                stateCurrent[rowsCurrent.indexOf(sourceNode)][columnsCurrent.indexOf(destNode)] = 1;
             }
 
             if(sourceNode.equals(destNode)){
@@ -147,6 +156,7 @@ public class BackwardDependency {
             matrix[j] = matrix[j+1];
         }
 
+        currentRowCount--;
         return matrix;
     }
 
@@ -219,7 +229,14 @@ public class BackwardDependency {
     // https://stackoverflow.com/questions/27728550/resize-primitive-2d-array/27728645#27728645
     // It used to increase or decrease size of a matrix
     public static Integer[][] resize(Integer[][] matrix, int w, int h) {
-        Integer[][] temp = new Integer[h][w];
+        Integer[][] temp = new Integer[w][h];
+
+        for(int i=0;i<w; i++){
+            for(int j=0;j<h;j++){
+                temp[i][j] = 0;
+            }
+        }
+
         h = Math.min(h, matrix.length);
         w = Math.min(w, matrix[0].length);
         for (int i = 0; i < h; i++)
@@ -300,11 +317,4 @@ public class BackwardDependency {
         BackwardDependency.relations = relations;
     }
 
-    public static Integer getComponentCount() {
-        return componentCount;
-    }
-
-    public static void setComponentCount(Integer componentCount) {
-        BackwardDependency.componentCount = componentCount;
-    }
 }
