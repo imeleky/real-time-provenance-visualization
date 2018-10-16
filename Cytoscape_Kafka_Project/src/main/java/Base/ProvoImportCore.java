@@ -110,7 +110,6 @@ public class ProvoImportCore extends JPanel {
         folderFile.delete();
         createFiles();
         String path = getWholePath();
-        System.out.println("Path: " + path);
         TaskIterator taskIterator = new ExtractEdgesNodesTaskFactory(cytoVisProject,path).createTaskIterator();
         adapter.getTaskManager().execute(taskIterator);
     }

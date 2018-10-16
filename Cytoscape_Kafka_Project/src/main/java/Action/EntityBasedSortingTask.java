@@ -61,9 +61,14 @@ public class EntityBasedSortingTask extends AbstractTask{
         List<CyNode> activities = new ArrayList<CyNode>();
         // Getting all activities and their start times
         List<CyNode> allActivities = filter.FilterRowByNodeType("activity","nodeType");
-        List<String> startTimes = getTimeFromColumn(table.getColumn("startTime"));
+        List<String> startTimes = new ArrayList<>();
+        if(table != null){
+            if(table.getColumn("startTime") != null){
+                startTimes = getTimeFromColumn(table.getColumn("startTime"));
+            }
+        }
         // Parsing start times froms String to Date
-        DateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+        DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         List<Date> dates = new ArrayList<Date>();
 
         try{
@@ -178,7 +183,10 @@ public class EntityBasedSortingTask extends AbstractTask{
     }
     // This method gets time from a column and removes null values from it.
     public List<String> getTimeFromColumn(CyColumn column){
-        List<String> list = column.getValues(String.class);
+        List<String> list = new ArrayList<>();
+        if(column != null){
+            list = column.getValues(String.class);
+        }
         int i=0;
         while(i<list.size()){
             if(list.get(i) == null){

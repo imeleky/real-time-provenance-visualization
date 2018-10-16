@@ -2,9 +2,11 @@ package Base;
 
 import App.CytoVisProject;
 import App.MyControlPanel;
+import Util.BackwardDependency;
 import Util.FilterUtil;
 import org.cytoscape.app.swing.CySwingAppAdapter;
 import org.cytoscape.model.*;
+import org.cytoscape.model.events.RowSetRecord;
 import org.cytoscape.model.events.RowsSetEvent;
 import org.cytoscape.model.events.RowsSetListener;
 
@@ -16,12 +18,14 @@ public class TableSetListener implements RowsSetListener {
     private CySwingAppAdapter adapter;
     private CytoVisProject cytoVisProject;
     private MyControlPanel myControlPanel;
+    private BackwardDependency dependency;
 
-    public TableSetListener(CytoVisProject cytoVisProject) {
+    public TableSetListener(CytoVisProject cytoVisProject, BackwardDependency dependency) {
         // Initializations
         this.cytoVisProject = cytoVisProject;
-        this.adapter = cytoVisProject.getAdapter();
-        myControlPanel = cytoVisProject.getMyControlPanel();
+        this.adapter        = cytoVisProject.getAdapter();
+        this.myControlPanel = cytoVisProject.getMyControlPanel();
+        this.dependency     = dependency;
     }
     // Method for finding all different kind of node types.
     public void handleEvent(RowsSetEvent e) {
@@ -43,6 +47,7 @@ public class TableSetListener implements RowsSetListener {
             myControlPanel.setNodeTypes(nodeTypes);
             myControlPanel.activateTools();
             adapter.getCyApplicationManager().getCurrentNetworkView().updateView();
+
         }
 
     }

@@ -4,26 +4,24 @@ import App.CytoVisProject;
 import App.MyControlPanel;
 import Action.*;
 
-import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
+import java.awt.List;
+import java.io.*;
+import java.lang.reflect.Array;
+import java.security.KeyStore;
+import java.util.*;
 import javax.swing.*;
 
 import org.cytoscape.app.swing.CySwingAppAdapter;
-import org.cytoscape.task.read.LoadNetworkFileTaskFactory;
-import org.cytoscape.task.read.LoadTableFileTaskFactory;
-import org.cytoscape.work.Task;
-import org.cytoscape.work.TaskIterator;
-import org.cytoscape.work.TaskManager;
-import org.cytoscape.work.TaskMonitor;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
 public class CompareGraphsCore {
+
+    private Double THRESHOLD;
+    private Integer algorithm;
+    private Double nodePropertyWeight;
+    private Double edgePropertyWeight;
+    private Double neighbourNodePropertyWeight;
 
     private CySwingAppAdapter adapter;
     private CytoVisProject cytoVisProject;
@@ -44,24 +42,35 @@ public class CompareGraphsCore {
 
     private JFileChooser fileChooser;
 
-    JSONArray firstGrapshNodes;
+    JSONArray firstGraphsNodes;
     JSONArray firstGraphsEdges;
     JSONArray secondGraphsNodes;
     JSONArray secondGraphsEdges;
+    JSONArray attendanceList;
 
     ArrayList firstGraphNodeIdList;
     ArrayList secondGraphNodeIdList;
+    ArrayList matchedParts;
+    ArrayList similarNodePairs;
 
     public CompareGraphsCore(CytoVisProject cytoVisProject) {
         this.cytoVisProject = cytoVisProject;
         this.myControlPanel = cytoVisProject.getMyControlPanel();
-        this.adapter = cytoVisProject.getAdapter();
-        this.similarity = 1.0;
+        this.adapter        = cytoVisProject.getAdapter();
+        this.similarity     = 1.0;
+        this.attendanceList = new JSONArray();
 
-        firstGrapshNodes  = new JSONArray();
+        firstGraphsNodes  = new JSONArray();
         firstGraphsEdges  = new JSONArray();
         secondGraphsNodes = new JSONArray();
         secondGraphsEdges = new JSONArray();
+        similarNodePairs  = new ArrayList();
+
+        algorithm = 2;
+        nodePropertyWeight = 2.0;
+        edgePropertyWeight = 2.0;
+        neighbourNodePropertyWeight = 1.0;
+        THRESHOLD = 0.7;
     }
 
     public boolean chooseFirstGraphsNode() {
@@ -141,169 +150,553 @@ public class CompareGraphsCore {
     }
 
     public Integer compareGraphs() {
-        Integer result;
-        ArrayList firstVector  = new ArrayList();
-        ArrayList secondVector = new ArrayList();
+        Integer result = 1;
+
+        node1Path = "/home/erkan/Desktop/n1.csv";
+        node2Path = "/home/erkan/Desktop/n2.csv";
+        edge1Path = "/home/erkan/Desktop/e1.csv";
+        edge2Path = "/home/erkan/Desktop/e2.csv";
 
         firstGraphsEdges  = new JSONArray();
-        firstGrapshNodes  = new JSONArray();
+        firstGraphsNodes  = new JSONArray();
         secondGraphsEdges = new JSONArray();
         secondGraphsNodes = new JSONArray();
 
         if(node1Path != null && node2Path != null && edge1Path != null && edge2Path != null){
             this.readGraphs();
+        }else{
+            result = 0;
+        }
 
-            Integer firstGraphRootID  = findGraphRoot(1);
-            Integer secondGraphRootID = findGraphRoot(2);
-            System.out.println("Roots:" + firstGraphRootID + " " + secondGraphRootID);
+        return result;
+    }
 
-            if(firstGraphRootID < 0 || secondGraphRootID < 0){
-                result = -1;
-            }else{
-                result = 1;
-                similarity = 1.0;
+    public void findSimilarNodePairs(){
+        Integer i;
+        Integer j;
 
-                firstVector  = getVector(firstGraphRootID, 1);
-                secondVector = getVector(secondGraphRootID,2);
-
-                Integer counter = 0;
-                while(firstVector.size() > counter && secondVector.size() > counter){
-                    ArrayList firstVectorLevel  = (ArrayList) firstVector.get(counter);
-                    ArrayList secondVectorLevel = (ArrayList) secondVector.get(counter);
-
-                    Integer firstNodeCount              = ((Integer) firstVectorLevel.get(2));
-                    Integer secondNodeCount             = ((Integer) secondVectorLevel.get(2));
-                    Double  firstAverageChildCount      = ((Double) firstVectorLevel.get(3));
-                    Double  secondAverageChildCount     = ((Double) secondVectorLevel.get(3));
-
-                    if(firstNodeCount > secondNodeCount){
-                        similarity = similarity * (secondNodeCount.doubleValue() / firstNodeCount.doubleValue());
-                    }else{
-                        similarity = similarity * (firstNodeCount.doubleValue() / secondNodeCount.doubleValue());
+        similarNodePairs = new ArrayList();
+        if(algorithm == 2){
+            for(i=1; i<firstGraphsNodes.size(); i++){
+                for(j=1; j<secondGraphsNodes.size(); j++){
+                    if(getAttendance(((JSONObject)firstGraphsNodes.get(i)).get("nodeID").toString(),
+                            ((JSONObject)secondGraphsNodes.get(j)).get("nodeID").toString()) > THRESHOLD){
+                        ArrayList tempArrayList = new ArrayList();
+                        tempArrayList.add(((JSONObject)firstGraphsNodes.get(i)).get("nodeID").toString());
+                        tempArrayList.add(((JSONObject)secondGraphsNodes.get(j)).get("nodeID").toString());
+                        similarNodePairs.add(tempArrayList);
                     }
+                }
+            }
+        }else if(algorithm == 1){
+            for(i=0; i<attendanceList.size(); i++){
+                if((Boolean) ((JSONObject)((JSONArray)attendanceList.get(i)).get(0)).get("isSimilar")){
+                    ArrayList tempArrayList = new ArrayList();
+                    tempArrayList.add(((JSONObject)((JSONArray)attendanceList.get(i)).get(0)).get("firstNode").toString());
+                    tempArrayList.add(((JSONObject)((JSONArray)attendanceList.get(i)).get(0)).get("secondNode").toString());
+                    similarNodePairs.add(tempArrayList);
+                }
+            }
+        }
+    }
 
-                    if(firstAverageChildCount > 0 && secondAverageChildCount > 0){
-                        if(firstAverageChildCount > secondAverageChildCount){
-                            similarity = similarity * (secondAverageChildCount / firstAverageChildCount);
-                        }else{
-                            similarity = similarity * (firstAverageChildCount / secondAverageChildCount);
+    public void createAttendanceList(){
+        Integer     i;
+        Integer     j;
+        Integer     node1index;
+        Integer     node2index;
+        String      adjacentOfFirstNode;
+        String      adjacentOfSecondNode;
+        Double      tempSimilarity;
+
+        ArrayList<String> nodePropertyList = getPropertyList(false);
+        ArrayList<String> edgePropertyList = getPropertyList(true);
+        attendanceList = new JSONArray();
+
+        Double thresholdCoefficient = determineThreshold(nodePropertyList.size(), edgePropertyList.size());
+        System.out.println("Threshold Coefficient: " + thresholdCoefficient + "\n" + "Algorithm: " + algorithm);
+        System.out.println("Weights: " + nodePropertyWeight + "-" + edgePropertyWeight + "-" + neighbourNodePropertyWeight);
+        System.out.println("Treshold:: " + THRESHOLD);
+
+        for(i=1; i<firstGraphsNodes.size(); i++){
+            for(j=1; j<secondGraphsNodes.size(); j++){
+                ArrayList<String> incidentNodesForNode1 = findIncidentNodes(((JSONObject)firstGraphsNodes.get(i)).get("nodeID").toString(), true);
+                ArrayList<String> incidentNodesForNode2 = findIncidentNodes(((JSONObject)secondGraphsNodes.get(j)).get("nodeID").toString(), false);
+                ArrayList<String> incidentListForSmallerDegree;
+                ArrayList<String> incidentListForLargerDegree;
+                String node1;
+                String node2;
+                Boolean isFirstForBigger;
+                Boolean isFirstForLower;
+
+                JSONArray nodePairArray = new JSONArray();
+                JSONObject nodepair = new JSONObject();
+                nodepair.put("firstNode", ((JSONObject)firstGraphsNodes.get(i)).get("nodeID").toString());
+                nodepair.put("secondNode", ((JSONObject)secondGraphsNodes.get(j)).get("nodeID").toString());
+                nodepair.put("isSimilar", true);
+
+                Integer s1 = 0;
+                Integer s2 = 0;
+                if(incidentNodesForNode1.size() < incidentNodesForNode2.size()){
+                    s1 = incidentNodesForNode1.size();
+                    s2 = incidentNodesForNode2.size();
+                    isFirstForBigger = true;
+                    isFirstForLower  = false;
+                    incidentListForSmallerDegree = incidentNodesForNode1;
+                    incidentListForLargerDegree = incidentNodesForNode2;
+                    node1 = ((JSONObject)firstGraphsNodes.get(i)).get("nodeID").toString();
+                    node2 = ((JSONObject)secondGraphsNodes.get(j)).get("nodeID").toString();
+                }else{
+                    s1 = incidentNodesForNode2.size();
+                    s2 = incidentNodesForNode1.size();
+                    isFirstForBigger = false;
+                    isFirstForLower  = true;
+                    incidentListForSmallerDegree = incidentNodesForNode2;
+                    incidentListForLargerDegree = incidentNodesForNode1;
+                    node2 = ((JSONObject)firstGraphsNodes.get(i)).get("nodeID").toString();
+                    node1 = ((JSONObject)secondGraphsNodes.get(j)).get("nodeID").toString();
+                }
+
+                System.out.println("Current nodes:" + ((JSONObject)firstGraphsNodes.get(i)).get("nodeID").toString() +
+                    "-" + ((JSONObject)secondGraphsNodes.get(j)).get("nodeID").toString());
+                JSONArray connectivityArray = new JSONArray();
+
+                for(node1index=0; node1index<s1; node1index++){
+                    adjacentOfFirstNode = incidentListForSmallerDegree.get(node1index);
+
+                    for(node2index=0; node2index<s2; node2index++){
+                        tempSimilarity = 1.0;
+                        adjacentOfSecondNode = incidentListForLargerDegree.get(node2index);
+                        JSONObject edgepair = new JSONObject();
+                        edgepair.put("adjacent1", adjacentOfFirstNode);
+                        edgepair.put("adjacent2", adjacentOfSecondNode);
+
+                        System.out.println("Adjacent: " + adjacentOfFirstNode + "-" + adjacentOfSecondNode);
+                        if(algorithm == 2){
+                            for(String property : edgePropertyList){
+                                if(((JSONObject)firstGraphsEdges.get(0)).containsValue(property) && ((JSONObject)secondGraphsEdges.get(0)).containsValue(property)){
+                                    if(findEdgeProperty(node1, adjacentOfFirstNode, property, isFirstForBigger) != null &&
+                                            findEdgeProperty(node2, adjacentOfSecondNode, property, isFirstForLower) != null){
+                                        if(findEdgeProperty(node1, adjacentOfFirstNode, property, isFirstForBigger).length() >= 1 &&
+                                                findEdgeProperty(node2, adjacentOfSecondNode, property, isFirstForLower).length() >= 1){
+                                            if(!findEdgeProperty(node1, adjacentOfFirstNode, property, isFirstForBigger)
+                                                    .equals(findEdgeProperty(node2, adjacentOfSecondNode, property, isFirstForLower))){
+                                                if(property.equals("interaction")){
+                                                    tempSimilarity = tempSimilarity * ((thresholdCoefficient-(2*edgePropertyWeight))/(thresholdCoefficient));
+                                                }else{
+                                                    tempSimilarity = tempSimilarity * ((thresholdCoefficient-2*edgePropertyWeight)/(thresholdCoefficient));
+                                                }
+                                            }
+                                        }else{
+                                            if(findEdgeProperty(node1, adjacentOfFirstNode,
+                                                    property, isFirstForBigger).length() >= 1 || findEdgeProperty(node2,
+                                                    adjacentOfSecondNode, property, isFirstForLower).length() >= 1){
+                                                tempSimilarity = tempSimilarity * ((thresholdCoefficient-(edgePropertyWeight / 2))/(thresholdCoefficient));
+                                            }
+                                        }
+                                    }else{
+                                        if(findEdgeProperty(node1, adjacentOfFirstNode,
+                                                property, isFirstForBigger) != null || findEdgeProperty(node2,
+                                                adjacentOfSecondNode, property, isFirstForLower) != null) {
+                                            tempSimilarity = tempSimilarity * ((thresholdCoefficient-(edgePropertyWeight / 2))/(thresholdCoefficient));
+                                        }
+                                    }
+                                }else{
+                                    tempSimilarity = tempSimilarity * ((thresholdCoefficient-(edgePropertyWeight / 2))/(thresholdCoefficient));
+                                }
+                            }
+
+                            for(String property : nodePropertyList){
+                                if(((JSONObject)firstGraphsNodes.get(0)).containsValue(property) && ((JSONObject)secondGraphsNodes.get(0)).containsValue(property)){
+                                    if(findNodeProperty(adjacentOfFirstNode, property, isFirstForBigger) != null &&
+                                            findNodeProperty(adjacentOfSecondNode, property, isFirstForLower) != null){
+                                        if(findNodeProperty(adjacentOfFirstNode, property, isFirstForBigger).length() >= 1 &&
+                                                findNodeProperty(adjacentOfSecondNode, property, isFirstForLower).length() >= 1){
+                                            if(!findNodeProperty(adjacentOfFirstNode, property, isFirstForBigger).equals(findNodeProperty(adjacentOfSecondNode, property, isFirstForLower))){
+                                                if(property.equals("nodeType")){
+                                                    tempSimilarity = tempSimilarity * ((thresholdCoefficient-(2*neighbourNodePropertyWeight))/(thresholdCoefficient));
+                                                }else{
+                                                    tempSimilarity = tempSimilarity * ((thresholdCoefficient-neighbourNodePropertyWeight)/(thresholdCoefficient));
+                                                }
+                                            }
+                                        }else{
+                                            if(findNodeProperty(adjacentOfFirstNode, property, isFirstForBigger).length() >= 1 ||
+                                                    findNodeProperty(adjacentOfSecondNode, property, isFirstForLower).length() >= 1){
+                                                tempSimilarity = tempSimilarity * ((thresholdCoefficient-(neighbourNodePropertyWeight / 2))/(thresholdCoefficient));
+                                            }
+                                        }
+                                    }else{
+                                        if(findNodeProperty(adjacentOfFirstNode, property, isFirstForBigger) != null ||
+                                                findNodeProperty(adjacentOfSecondNode, property, isFirstForLower) != null) {
+                                            tempSimilarity = tempSimilarity * ((thresholdCoefficient-(neighbourNodePropertyWeight / 2))/(thresholdCoefficient));
+                                        }
+                                    }
+                                }else{
+                                    tempSimilarity = tempSimilarity * ((thresholdCoefficient-(neighbourNodePropertyWeight / 2))/(thresholdCoefficient));
+                                }
+                            }
+
+                            edgepair.put("attendance", tempSimilarity);
+                            connectivityArray.add(edgepair);
+                        }else if(algorithm == 1){
+                            for(String property:edgePropertyList){
+                                if(property.equals("interaction")){
+                                    if(!findEdgeProperty(node1, adjacentOfFirstNode, property, isFirstForBigger).equals(findEdgeProperty(node2, adjacentOfSecondNode, property, isFirstForLower))){
+                                        nodepair.put("isSimilar", false);
+                                        break;
+                                    }else {
+                                        nodepair.put("isSimilar", true);
+                                    }
+                                }
+                            }
+
+                            for(String property:nodePropertyList){
+                                if(property.equals("nodeType")){
+                                    if(!findNodeProperty(adjacentOfFirstNode, property, isFirstForBigger).equals(findNodeProperty(adjacentOfSecondNode, property, isFirstForLower))){
+                                        nodepair.put("isSimilar", false);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Double attendance = 1.0;
+
+                if(algorithm == 2){
+                    for(String property : nodePropertyList){
+                        if(((JSONObject)firstGraphsNodes.get(0)).containsValue(property) && ((JSONObject)secondGraphsNodes.get(0)).containsValue(property)){
+                            if(findNodeProperty(node1, property, isFirstForBigger) != null &&
+                                    findNodeProperty(node2, property, isFirstForLower) != null){
+                                if(findNodeProperty(node1, property, isFirstForBigger).length() >= 1 &&
+                                        findNodeProperty(node2, property, isFirstForLower).length() >= 1){
+                                    if(!findNodeProperty(node1, property, isFirstForBigger)
+                                            .equals(findNodeProperty(node2, property, isFirstForLower))){
+                                        if(property.equals("nodeType")){
+                                            attendance = attendance * ((thresholdCoefficient - (2*nodePropertyWeight))/(thresholdCoefficient));
+                                        }else{
+                                            attendance = attendance * ((thresholdCoefficient - nodePropertyWeight)/(thresholdCoefficient));
+                                        }
+                                    }
+                                }else{
+                                    if(findNodeProperty(node1, property, isFirstForBigger).length() >= 1 ||
+                                            findNodeProperty(node2, property, isFirstForLower).length() >= 1){
+                                        attendance = attendance * ((thresholdCoefficient - (nodePropertyWeight / 2))/(thresholdCoefficient));
+                                    }
+                                }
+                            }else {
+                                if (findNodeProperty(((JSONObject) firstGraphsNodes.get(i)).get("nodeID").toString(), property, true) != null ||
+                                        findNodeProperty(((JSONObject) secondGraphsNodes.get(j)).get("nodeID").toString(), property, false) != null) {
+                                    attendance = attendance * ((thresholdCoefficient - (nodePropertyWeight / 2))/(thresholdCoefficient));
+                                }
+                            }
+                        }else {
+                            attendance = attendance * ((thresholdCoefficient - (nodePropertyWeight / 2))/(thresholdCoefficient));
                         }
                     }
 
-                    counter++;
+                    if(incidentNodesForNode1.size() != 0 || incidentNodesForNode2.size() != 0){
+                        if(incidentNodesForNode1.size() > incidentNodesForNode2.size()){
+                            if(incidentNodesForNode2.size() != 0){
+                                attendance = attendance * incidentNodesForNode2.size() / incidentNodesForNode1.size();
+                            }else{
+                                attendance = attendance * 1 / (incidentNodesForNode1.size() + 1);
+                            }
+                        }else{
+                            if(incidentNodesForNode1.size() != 0){
+                                attendance = attendance * incidentNodesForNode1.size() / incidentNodesForNode2.size();
+                            }else {
+                                attendance = attendance * 1 / (incidentNodesForNode2.size() + 1);
+                            }
+
+                        }
+                    }
+
+                    ArrayList<Double> attendanceList = new ArrayList<>();
+                    ArrayList<String>  adjacent1List  = new ArrayList<>();
+                    ArrayList<String>  adjacent2List  = new ArrayList<>();
+
+                    for(int t=0; t<connectivityArray.size(); t++){
+                        attendanceList.add(Double.parseDouble(((JSONObject) connectivityArray.get(t)).get("attendance").toString()));
+                        adjacent1List.add(((JSONObject) connectivityArray.get(t)).get("adjacent1").toString());
+                        adjacent2List.add(((JSONObject) connectivityArray.get(t)).get("adjacent2").toString());
+                    }
+
+                    for(int t=0; t<attendanceList.size()-1; t++){
+                        for(int z=t+1; z<attendanceList.size(); z++){
+                            if(attendanceList.get(z) > attendanceList.get(t)){
+                                Double temp = attendanceList.get(t);
+                                attendanceList.set(t, attendanceList.get(z));
+                                attendanceList.set(z, temp);
+
+                                String temp2 = adjacent1List.get(t);
+                                adjacent1List.set(t, adjacent1List.get(z));
+                                adjacent1List.set(z, temp2);
+
+                                String temp3 = adjacent2List.get(t);
+                                adjacent2List.set(t, adjacent2List.get(z));
+                                adjacent2List.set(z, temp3);
+                            }
+                        }
+                    }
+
+                    JSONArray resultList = new JSONArray();
+                    for(int t=0; t<attendanceList.size(); t++){
+                        if(!checkIfEdgeExist(resultList, adjacent1List.get(t), adjacent2List.get(t), attendanceList.get(t))){
+                            JSONObject object = new JSONObject();
+                            object.put("adjacent1", adjacent1List.get(t));
+                            object.put("adjacent2", adjacent2List.get(t));
+                            object.put("attendance", attendanceList.get(t));
+                            resultList.add(object);
+                        }
+                    }
+
+                    for(int t=0; t<resultList.size(); t++){
+                        attendance = attendance * Double.parseDouble(((JSONObject) resultList.get(t)).get("attendance").toString());
+                    }
+
+                    nodepair.put("attendance", attendance);
+                }else if(algorithm == 1){
+                    for(String property:nodePropertyList){
+                        if(property.equals("nodeType")){
+                            if(!findNodeProperty(node1, property, isFirstForBigger)
+                                    .equals(findNodeProperty(node2, property, isFirstForLower))){
+                                nodepair.put("isSimilar", false);
+                                break;
+                            }
+                        }
+                    }
+
+                    if(incidentNodesForNode1.size() != incidentNodesForNode2.size()){
+                        nodepair.put("isSimilar", false);
+                    }
                 }
 
-                if(firstVector.size() > secondVector.size()){
-                    similarity = similarity * (secondVector.size() / firstVector.size());
-                }else if(secondVector.size() > firstVector.size()){
-                    similarity = similarity * (firstVector.size() / firstVector.size());
+                nodePairArray.add(nodepair);
+                attendanceList.add(nodePairArray);
+            }
+        }
+
+        if(algorithm == 2){
+            for(i=0; i<attendanceList.size(); i++){
+                for(j=0; j<((JSONArray) attendanceList.get(i)).size(); j++){
+                    System.out.println(((JSONObject)((JSONArray) attendanceList.get(i)).get(j)).get("firstNode") + "-" + ((JSONObject)((JSONArray) attendanceList.get(i)).get(j)).get("secondNode")
+                            + ((JSONObject)((JSONArray) attendanceList.get(i)).get(j)).get("attendance"));
                 }
-
-                TaskIterator taskIterator = new TaskIterator();
-                taskIterator.append(new Task() {
-                    @Override
-                    public void run(TaskMonitor taskMonitor) throws Exception {
-                        File file = new File(getEdge1Path());
-                        LoadNetworkFileTaskFactory EdgeFile = adapter.get_LoadNetworkFileTaskFactory();
-                        TaskIterator taskIterator = EdgeFile.createTaskIterator(file);
-                        adapter.getTaskManager().execute(taskIterator);
-                    }
-                    @Override
-                    public void cancel() {
-
-                    }
-                });
-
-                taskIterator.append(new Task() {
-                    @Override
-                    public void run(TaskMonitor taskMonitor) throws Exception {
-                        File file = new File(getNode1Path());
-                        LoadTableFileTaskFactory NodeFile = adapter.getCyServiceRegistrar().getService(LoadTableFileTaskFactory.class);
-                        adapter.getTaskManager().execute(NodeFile.createTaskIterator(file));
-                    }
-                    @Override
-                    public void cancel() {
-
-                    }
-                });
-
-                taskIterator.append(new Task() {
-                    @Override
-                    public void run(TaskMonitor taskMonitor) throws Exception {
-                        File file = new File(getEdge2Path());
-                        LoadNetworkFileTaskFactory EdgeFile = adapter.get_LoadNetworkFileTaskFactory();
-                        TaskIterator taskIterator = EdgeFile.createTaskIterator(file);
-                        adapter.getTaskManager().execute(taskIterator);
-                    }
-                    @Override
-                    public void cancel() {
-
-                    }
-                });
-
-                taskIterator.append(new Task() {
-                    @Override
-                    public void run(TaskMonitor taskMonitor) throws Exception {
-                        File file = new File(getNode2Path());
-                        LoadTableFileTaskFactory NodeFile = adapter.getCyServiceRegistrar().getService(LoadTableFileTaskFactory.class);
-                        adapter.getTaskManager().execute(NodeFile.createTaskIterator(file));
-                    }
-                    @Override
-                    public void cancel() {
-
-                    }
-                });
-
-                TaskManager taskManager = adapter.getCyServiceRegistrar().getService(TaskManager.class);
-                while (taskIterator.hasNext()){
-                    taskManager.execute(taskIterator);
+            }
+        }else if(algorithm == 1){
+            for(i=0; i<attendanceList.size(); i++){
+                for(j=0; j<((JSONArray) attendanceList.get(i)).size(); j++){
+                    System.out.println(((JSONObject)((JSONArray) attendanceList.get(i)).get(j)).get("firstNode") + "-" + ((JSONObject)((JSONArray) attendanceList.get(i)).get(j)).get("secondNode")
+                            + ((JSONObject)((JSONArray) attendanceList.get(i)).get(j)).get("isSimilar"));
                 }
+            }
+        }
+    }
 
-                this.drawComparedGraphs = new DrawComparedGraphs(this);
-                drawComparedGraphs.draw(firstVector, secondVector, firstGrapshNodes, secondGraphsNodes);
+    public Boolean checkIfEdgeExist(JSONArray list, String adjacent1, String adjacent2, Double attendance){
+        Boolean result = false;
+        Integer i;
 
-                /*ImportEdgesAction importEdgesAction = new ImportEdgesAction(cytoVisProject, edge1Path);
-                importEdgesAction.actionPerformed(new ActionEvent(new Button(), ActionEvent.ACTION_PERFORMED, null));
+        for(i=0; i<list.size(); i++){
+            if(((JSONObject) list.get(i)).get("adjacent1").toString().equals(adjacent1) ||
+                    ((JSONObject) list.get(i)).get("adjacent1").toString().equals(adjacent2) ||
+                    ((JSONObject) list.get(i)).get("adjacent2").toString().equals(adjacent1) ||
+                    ((JSONObject) list.get(i)).get("adjacent2").toString().equals(adjacent2)){
+                result = true;
+                break;
+            }
+        }
 
-                ImportNodesAction importNodesAction = new ImportNodesAction(cytoVisProject, node1Path);
-                importNodesAction.actionPerformed(new ActionEvent(new Button(), ActionEvent.ACTION_PERFORMED, null));
-*/
-                /*final JButton tempButton = new JButton();
-                tempButton.setAction(new ImportEdgesAction(cytoVisProject, edge1Path));
+        return result;
+    }
 
+    public Boolean edgeExist(JSONArray edgeList, String adjacent1, String adjacent2){
+        Boolean result = true;
 
-                TaskManager taskManager = adapter.getCyServiceRegistrar().getService(TaskManager.class);
-                taskManager.execute(new TaskIterator(new Task() {
-                    @Override
-                    public void run(TaskMonitor taskMonitor) throws Exception {
-                        tempButton.doClick();
-                    }
+        for(int i=0; i<edgeList.size(); i++){
+            JSONObject tempObject = (JSONObject) edgeList.get(i);
+            if(tempObject.get("adjacent1").toString().equals(adjacent1) || tempObject.get("adjacent2").toString().equals(adjacent2)){
+                result = false;
+            }
+        }
 
-                    @Override
-                    public void cancel() {
+        return false;
+    }
 
-                    }
-                }));
+    public Boolean isNodePairAdded(String node1, String adjacent1, String node2, String adjacent2, Double attendance, JSONArray list){
+        Boolean result = false;
+        for(Object object : list){
+            JSONObject tempObject = (JSONObject) object;
+            if(tempObject.get("bestMatchingNode1Source").toString().equals(node1) && tempObject.get("bestMatchingNode1Destination").toString().equals(adjacent1)
+                    && tempObject.get("bestMatchingNode2Source").toString().equals(node2) && tempObject.get("bestMatchingNode2Destination").toString().equals(adjacent2)) {
+                if(attendance < Double.parseDouble(tempObject.get("attendance").toString())){
+                    result = true;
+                }
+            }
+        }
 
-                final JButton tempButton2 = new JButton();
-                tempButton2.setAction(new ImportNodesAction(cytoVisProject, node1Path));
+        return result;
+    }
 
-                taskManager.execute(new TaskIterator(new Task() {
-                    @Override
-                    public void run(TaskMonitor taskMonitor) throws Exception {
-                        tempButton2.doClick();
-                    }
+    public Double determineThreshold(Integer nodePropCount, Integer edgePropCount){
+        Double result;
+        result = nodePropCount.doubleValue() * nodePropertyWeight + nodePropCount.doubleValue() * neighbourNodePropertyWeight
+                + edgePropCount.doubleValue() * edgePropertyWeight;
 
-                    @Override
-                    public void cancel() {
+        return result;
+    }
 
-                    }
-                }));*/
+    public Double getAttendance(String x, String y){
+        Double result = -1.0;
+        Integer i;
 
+        for(i=0; i<attendanceList.size(); i++){
+            JSONArray tmp = (JSONArray) attendanceList.get(i);
+            JSONObject values = (JSONObject) tmp.get(0);
+
+            if(values.get("firstNode").toString().equals(x) && values.get("secondNode").toString().equals(y)){
+                result = (Double) values.get("attendance");
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    public String findNodeProperty(String nodeID, String property, Boolean isFirst){
+        String    result;
+        JSONArray tmp;
+        Integer   i;
+        if(isFirst){
+            tmp = firstGraphsNodes;
+        }else {
+            tmp = secondGraphsNodes;
+        }
+
+        result = null;
+        for(i=1; i<tmp.size(); i++){
+            if(((JSONObject) tmp.get(i)).get("nodeID").toString().equals(nodeID)){
+                if(((JSONObject) tmp.get(i)).get(property) != null){
+                    result = ((JSONObject) tmp.get(i)).get(property).toString();
+                    break;
+                }else {
+                    return null;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    public String findEdgeProperty(String x1, String x2, String property, Boolean isFirst){
+        Integer   i;
+        String    result;
+        JSONArray tmp;
+
+        if(isFirst){
+            tmp = firstGraphsEdges;
+        }else {
+            tmp = secondGraphsEdges;
+        }
+
+        result = null;
+        for(i=1; i<tmp.size(); i++){
+            if(((JSONObject)tmp.get(i)).get("node2ID").toString().equals(x1) &&
+                    ((JSONObject) tmp.get(i)).get("node1ID").toString().equals(x2)){
+                if(((JSONObject) tmp.get(i)).get(property) != null){
+                    result = ((JSONObject) tmp.get(i)).get(property).toString();
+                    break;
+                }else {
+                    return null;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    // isEdge: true means edge, false means node propertylist;
+    public ArrayList<String> getPropertyList(Boolean isEdge){
+        Integer i;
+        ArrayList<String> result = new ArrayList<>();
+        Set<Map.Entry> headers;
+        Set<Map.Entry> headers2;
+        if(isEdge){
+            headers  = ((JSONObject)firstGraphsEdges.get(0)).entrySet();
+            headers2 = ((JSONObject)secondGraphsEdges.get(0)).entrySet();
+        }else{
+            headers  = ((JSONObject)firstGraphsNodes.get(0)).entrySet();
+            headers2 = ((JSONObject)secondGraphsNodes.get(0)).entrySet();
+        }
+
+        ArrayList<String> propertyList = new ArrayList<>();
+        propertyList.add("nodeID");
+        propertyList.add("nodeName");
+        propertyList.add("name");
+        propertyList.add("shared name");
+        propertyList.add("shared interaction");
+        propertyList.add("edgeID");
+        propertyList.add("node1ID");
+        propertyList.add("node2ID");
+
+        Iterator iterator = headers.iterator();
+        while (iterator.hasNext()){
+            Object object = iterator.next();
+            if(!propertyList.contains(object.toString().substring(8))){
+                result.add(object.toString().substring(8));
+            }
+        }
+
+        iterator = headers2.iterator();
+        while (iterator.hasNext()){
+            Object object = iterator.next();
+            if (!propertyList.contains(object.toString().substring(8)) && !result.contains(object.toString().substring(8))){
+                result.add(object.toString().substring(8));
+            }
+        }
+
+        return result;
+    }
+
+    public ArrayList<String> findIncidentNodes(String nodeID, Boolean isFirstGraph){
+        ArrayList<String> result = new ArrayList<>();
+        Integer i;
+        JSONArray edgeList;
+
+        if(isFirstGraph){
+            edgeList = firstGraphsEdges;
+        }else{
+            edgeList = secondGraphsEdges;
+        }
+        for(i=1; i<edgeList.size(); i++){
+            if(((JSONObject) edgeList.get(i)).get("node2ID").toString().equals(nodeID)){
+                result.add(((JSONObject) edgeList.get(i)).get("node1ID").toString());
+            }
+        }
+
+        return result;
+    }
+
+    public ArrayList<String> findNeighborNodes(String nodeID, Boolean isFirstGraph){
+        ArrayList<String> result = new ArrayList<>();
+        Integer i;
+        JSONArray edgeList;
+
+        if(isFirstGraph){
+            edgeList = firstGraphsEdges;
+        }else{
+            edgeList = secondGraphsEdges;
+        }
+        for(i=1; i<edgeList.size(); i++){
+            if(((JSONObject) edgeList.get(i)).get("node2ID").toString().equals(nodeID)){
+                result.add(((JSONObject) edgeList.get(i)).get("node1ID").toString());
             }
 
-        }else{
-            result = 0;
+            if(((JSONObject) edgeList.get(i)).get("node1ID").toString().equals(nodeID)){
+                result.add(((JSONObject) edgeList.get(i)).get("node2ID").toString());
+            }
         }
 
         return result;
@@ -367,26 +760,26 @@ public class CompareGraphsCore {
         Integer rootID = -1;
         Integer i;
         Integer j;
-        ArrayList nodeIdList = new ArrayList<>();
-        ArrayList childsList = new ArrayList<>();
+        ArrayList<String> nodeIdList = new ArrayList<>();
+        ArrayList<String> childsList = new ArrayList<>();
 
         if(graphPointer == 1){
-            for(i=1; i<firstGrapshNodes.size(); i++){
-                nodeIdList.add(((JSONObject) (firstGrapshNodes.get(i))).get("nodeID"));
+            for(i=1; i<firstGraphsNodes.size(); i++){
+                nodeIdList.add(((JSONObject) (firstGraphsNodes.get(i))).get("nodeID").toString());
             }
 
             for(i=1; i<firstGraphsEdges.size(); i++){
-                childsList.add(((JSONObject) (firstGraphsEdges.get(i))).get("node2ID"));
+                childsList.add(((JSONObject) (firstGraphsEdges.get(i))).get("node2ID").toString());
             }
 
             firstGraphNodeIdList = nodeIdList;
         }else if(graphPointer == 2){
             for(i=1; i<secondGraphsNodes.size(); i++){
-                nodeIdList.add(((JSONObject) (secondGraphsNodes.get(i))).get("nodeID"));
+                nodeIdList.add(((JSONObject) (secondGraphsNodes.get(i))).get("nodeID").toString());
             }
 
             for(i=1; i<secondGraphsEdges.size(); i++){
-                childsList.add(((JSONObject) (secondGraphsEdges.get(i))).get("node2ID"));
+                childsList.add(((JSONObject) (secondGraphsEdges.get(i))).get("node2ID").toString());
             }
 
             secondGraphNodeIdList = nodeIdList;
@@ -396,7 +789,7 @@ public class CompareGraphsCore {
         for(i=1; i<nodeIdList.size(); i++){
             if(childsList.contains(nodeIdList.get(i))){
                 for(j=1; j<nodeIdList.size(); j++){
-                    if(nodeIdList.get(j) == nodeIdList.get(i)){
+                    if(nodeIdList.get(j).equals(nodeIdList.get(i))){
                         tempList.add(nodeIdList.get(j));
                     }
                 }
@@ -463,7 +856,7 @@ public class CompareGraphsCore {
 
     public void addToJSONArrays(JSONObject data, Integer filePointer){
         if(filePointer == 1){
-            this.firstGrapshNodes.add(data);
+            this.firstGraphsNodes.add(data);
         }else if(filePointer == 2){
             this.firstGraphsEdges.add(data);
         }else if(filePointer == 3){
@@ -475,8 +868,29 @@ public class CompareGraphsCore {
 
     public void printAll(){
         JOptionPane.showMessageDialog(adapter.getCySwingApplication().getJFrame(),
-                firstGraphsEdges.toString() + "\n" + firstGrapshNodes + "\n" + secondGraphsEdges + "\n" + secondGraphsNodes,
+                firstGraphsEdges.toString() + "\n" + firstGraphsNodes + "\n" + secondGraphsEdges + "\n" + secondGraphsNodes,
                 "Error!", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    public void changeFile(Integer algorithm, Double nodeWeight, Double edgeWeight, Double neighbourNodeWeight, Double threshold){
+        try{
+            setAlgorithm(algorithm);
+            setNodePropertyWeight(nodeWeight);
+            setEdgePropertyWeight(edgeWeight);
+            setNeighbourNodePropertyWeight(neighbourNodeWeight);
+            setTHRESHOLD(threshold);
+
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    public Integer getAlgorithm() {
+        return algorithm;
+    }
+
+    public void setAlgorithm(Integer algorithm) {
+        this.algorithm = algorithm;
     }
 
     public CySwingAppAdapter getAdapter() {
@@ -559,6 +973,91 @@ public class CompareGraphsCore {
         this.similarity = similarity;
     }
 
+    public ArrayList getMatchedParts() {
+        return matchedParts;
+    }
 
+    public void setMatchedParts(ArrayList matchedParts) {
+        this.matchedParts = matchedParts;
+    }
 
+    public JSONArray getAttendanceList() {
+        return attendanceList;
+    }
+
+    public void setAttendanceList(JSONArray attendanceList) {
+        this.attendanceList = attendanceList;
+    }
+
+    public JSONArray getFirstGraphsNodes() {
+        return firstGraphsNodes;
+    }
+
+    public void setFirstGraphsNodes(JSONArray firstGraphsNodes) {
+        this.firstGraphsNodes = firstGraphsNodes;
+    }
+
+    public JSONArray getFirstGraphsEdges() {
+        return firstGraphsEdges;
+    }
+
+    public void setFirstGraphsEdges(JSONArray firstGraphsEdges) {
+        this.firstGraphsEdges = firstGraphsEdges;
+    }
+
+    public JSONArray getSecondGraphsNodes() {
+        return secondGraphsNodes;
+    }
+
+    public void setSecondGraphsNodes(JSONArray secondGraphsNodes) {
+        this.secondGraphsNodes = secondGraphsNodes;
+    }
+
+    public JSONArray getSecondGraphsEdges() {
+        return secondGraphsEdges;
+    }
+
+    public void setSecondGraphsEdges(JSONArray secondGraphsEdges) {
+        this.secondGraphsEdges = secondGraphsEdges;
+    }
+
+    public ArrayList getSimilarNodePairs() {
+        return similarNodePairs;
+    }
+
+    public void setSimilarNodePairs(ArrayList similarNodePairs) {
+        this.similarNodePairs = similarNodePairs;
+    }
+
+    public Double getNodePropertyWeight() {
+        return nodePropertyWeight;
+    }
+
+    public void setNodePropertyWeight(Double nodePropertyWeight) {
+        this.nodePropertyWeight = nodePropertyWeight;
+    }
+
+    public Double getEdgePropertyWeight() {
+        return edgePropertyWeight;
+    }
+
+    public void setEdgePropertyWeight(Double edgePropertyWeight) {
+        this.edgePropertyWeight = edgePropertyWeight;
+    }
+
+    public Double getNeighbourNodePropertyWeight() {
+        return neighbourNodePropertyWeight;
+    }
+
+    public void setNeighbourNodePropertyWeight(Double neighbourNodePropertyWeight) {
+        this.neighbourNodePropertyWeight = neighbourNodePropertyWeight;
+    }
+
+    public Double getTHRESHOLD() {
+        return THRESHOLD;
+    }
+
+    public void setTHRESHOLD(Double THRESHOLD) {
+        this.THRESHOLD = THRESHOLD;
+    }
 }

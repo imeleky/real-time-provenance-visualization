@@ -2,6 +2,7 @@ package App;
 
 import Base.*;
 import Action.*;
+import Util.BackwardDependency;
 import Util.FilterUtil;
 
 import Util.NetworkViewOrganizer;
@@ -13,6 +14,9 @@ import org.cytoscape.application.CyApplicationManager;
 import org.cytoscape.application.swing.CytoPanelComponent;
 import org.cytoscape.application.swing.CytoPanelName;
 import org.cytoscape.model.*;
+import org.cytoscape.task.write.ExportNetworkImageTaskFactory;
+import org.cytoscape.task.write.ExportNetworkViewTaskFactory;
+import org.cytoscape.task.write.ExportTableTaskFactory;
 import org.cytoscape.view.model.CyNetworkView;
 import org.cytoscape.view.presentation.property.BasicVisualLexicon;
 import org.cytoscape.work.TaskIterator;
@@ -30,7 +34,9 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -43,6 +49,8 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
     private CytoVisProject cytoVisProject;
     private SliderVisualization sliderVisualization;
     private CompareGraphsCore compareGraphsCore;
+    private DrawComparedGraphs drawComparedGraphs;
+    private BackwardDependency backwardDependency;
 
     private List<String> nodeTypes;
     private JSlider slider;
@@ -56,9 +64,9 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
 
     private JButton showHideRelationButton;
     private JButton entityBasedSorting;
-    public JButton importVisStyleButton;
-    public JButton importNetworkButton;
-    public JButton importTableButton;
+    public  JButton importVisStyleButton;
+    public  JButton importNetworkButton;
+    public  JButton importTableButton;
     private JButton extractFilesButton;
     private JButton closeButton;
     private JButton helpButton;
@@ -80,8 +88,16 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
     private JButton chooseSecondGraphsNodeButton;
     private JButton chooseSecondGraphsEdgeButton;
     private JButton compareGraphsButton;
+    private JButton exportAsPngButton;
+    private JButton exportNetworkButton;
+    private JButton exportTableButton;
+    private JButton importGraphsButton;
+    private JButton startClusteringButton;
+    private JButton getBackwardProvenanceButton;
+    private JButton showAllNodesEdges;
 
     private JCheckBox sliderCheckBox;
+    private JCheckBox compareAllProperties;
     private JRadioButton active;
     private JRadioButton inactive;
     private JRadioButton vsTemplate1;
@@ -112,10 +128,17 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
     private JPanel sortPanel;
     private JPanel realTimeVisPanel;
     private JPanel compareGraphsPanel;
+    private JPanel exportPanel;
+    private JPanel clusteringPanel;
 
     private JScrollPane scrollPane;
 
+    private JSpinner clusteringSpinner;
     private JSpinner nodeCount;
+    private JSpinner nodeWeight;
+    private JSpinner edgeWeight;
+    private JSpinner neighbourNodeWeight;
+    private JSpinner threshold;
 
     private JLabel statusLabel;
     private JLabel appName;
@@ -136,6 +159,10 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
     private JLabel secondGraphsEdgeLabel;
     private JLabel firstGraphLabel;
     private JLabel secondGraphLabel;
+    private JLabel nodeWeightLabel;
+    private JLabel edgeWeightLabel;
+    private JLabel neighbourNodeWeightLabel;
+    private JLabel thresholdLabel;
 
     private Subscriber subscriber;
 
@@ -143,9 +170,10 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
     public MyControlPanel(CytoVisProject cytoVisProject){
         super();
         // Initializing Variables and Tools
-        cytoPanelHeight = (Toolkit.getDefaultToolkit().getScreenSize().height * 0.80);
-        cytoPanelWidth = (Toolkit.getDefaultToolkit().getScreenSize().width * 0.2);
-        mainPanelHeight = (cytoPanelHeight * 1.9);
+        backwardDependency = new BackwardDependency();
+        cytoPanelHeight = (Toolkit.getDefaultToolkit().getScreenSize().height * 0.81);
+        cytoPanelWidth = (Toolkit.getDefaultToolkit().getScreenSize().width * 0.20);
+        mainPanelHeight = (cytoPanelHeight * 2.6);
         mainPanelWidth = (cytoPanelWidth * 0.9);
         this.cytoVisProject = cytoVisProject;
         this.adapter = cytoVisProject.getAdapter();
@@ -155,12 +183,22 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         this.sliderStop = false;
         // Initializing tools
         initializeToolbox();
+        nodeWeight.setEnabled(false);
+        edgeWeight.setEnabled(false);
+        neighbourNodeWeight.setEnabled(false);
+        threshold.setEnabled(false);
         this.setAutoscrolls(true);
+        compareGraphsButton.setEnabled(false);
         this.compareGraphsCore = new CompareGraphsCore(cytoVisProject);
+        compareGraphsCore.changeFile(1, 0.0, 0.0, 0.0,0.0);
     }
 
     // This will initialize all the tools which will be on the control panel
     public void initializeToolbox(){
+        if(this.backwardDependency == null){
+            this.backwardDependency = new BackwardDependency();
+        }
+
         initializePanels();
         initializeAppNameToolbox();
         initializeFileToolBox();
@@ -174,6 +212,8 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         initializeActivityToolbox();
         initializeSliderToolbox();
         initializeCompareGraphsPanel();
+        initializeExportPanel();
+        initializeClusteringPanel();
         initializeHelpCloseToolbox();
         initializeNetworkAvailability();
         actionListeners();
@@ -186,41 +226,47 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         addingComponentsToSliderPanel();
         addingComponentsToRealTimeVisPanel();
         addingComponentsToToolboxPanel();
+        addingComponentsToClusteringPanel();
         addingComponentsToCompareGraphsPanel();
+        addingComponentsToExportPanel();
         addingComponentsToHelpClosePanel();
         addingComponentsToMainPanel();
     }
 
     public void initializePanels(){
         this.mainPanel                  = new JPanel();
-        this.showOnlyPanel              =  new JPanel();
+        this.showOnlyPanel              = new JPanel();
         this.hidePanel                  = new JPanel();
         this.highLightPanel             = new JPanel();
         this.helpExitPanel              = new JPanel();
         this.provoPanel                 = new JPanel();
-        this.toolboxPanel               =  new JPanel();
+        this.toolboxPanel               = new JPanel();
         this.showRelationsPanel         = new JPanel();
         this.sliderVisualizationPanel   = new JPanel();
-        this.visualStyleTemplatesPanel  =  new JPanel();
+        this.visualStyleTemplatesPanel  = new JPanel();
         this.relationsPanel             = new JPanel();
         this.sortPanel                  = new JPanel();
         this.realTimeVisPanel           = new JPanel();
         this.compareGraphsPanel         = new JPanel();
+        this.exportPanel                = new JPanel();
+        this.clusteringPanel            = new JPanel();
 
-        this.sliderVisualizationPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.9)).intValue(), ((Double)(mainPanelHeight * 0.09)).intValue()));
+        this.sliderVisualizationPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.9)).intValue(), ((Double)(mainPanelHeight * 0.08)).intValue()));
         this.mainPanel.setPreferredSize(new Dimension(mainPanelWidth.intValue(), mainPanelHeight.intValue()));
-        this.showOnlyPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.25)).intValue(), ((Double)(mainPanelHeight * 0.060)).intValue()));
-        this.hidePanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.25)).intValue(), ((Double)(mainPanelHeight * 0.060)).intValue()));
-        this.highLightPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.25)).intValue(), ((Double)(mainPanelHeight * 0.060)).intValue()));
-        this.showRelationsPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.7)).intValue(), ((Double)(mainPanelHeight * 0.04)).intValue()));
-        this.provoPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.14)).intValue()));
-        this.helpExitPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.045)).intValue()));
-        this.toolboxPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.34)).intValue()));
-        this.visualStyleTemplatesPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.85)).intValue(), ((Double)(mainPanelHeight * 0.06)).intValue()));
-        this.relationsPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.85)).intValue(), ((Double)(mainPanelHeight * 0.10)).intValue()));
-        this.sortPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.85)).intValue(), ((Double)(mainPanelHeight * 0.045)).intValue()));
-        this.realTimeVisPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.062)).intValue()));
-        this.compareGraphsPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.17)).intValue()));
+        this.showOnlyPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.25)).intValue(), ((Double)(mainPanelHeight * 0.045)).intValue()));
+        this.hidePanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.25)).intValue(), ((Double)(mainPanelHeight * 0.045)).intValue()));
+        this.highLightPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.25)).intValue(), ((Double)(mainPanelHeight * 0.045)).intValue()));
+        this.showRelationsPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.7)).intValue(), ((Double)(mainPanelHeight * 0.035)).intValue()));
+        this.provoPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.095)).intValue()));
+        this.helpExitPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.040)).intValue()));
+        this.toolboxPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.31)).intValue()));
+        this.visualStyleTemplatesPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.85)).intValue(), ((Double)(mainPanelHeight * 0.067)).intValue()));
+        this.relationsPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.85)).intValue(), ((Double)(mainPanelHeight * 0.085)).intValue()));
+        this.sortPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.85)).intValue(), ((Double)(mainPanelHeight * 0.039)).intValue()));
+        this.realTimeVisPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.055)).intValue()));
+        this.compareGraphsPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.24)).intValue()));
+        this.exportPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.075)).intValue()));
+        this.clusteringPanel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.95)).intValue(), ((Double)(mainPanelHeight * 0.041)).intValue()));
 
         // Setting border and titles to all panels
         this.mainPanel.setBorder(BorderFactory.createRaisedBevelBorder());
@@ -234,19 +280,21 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         this.sortPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED), "Sort"));
         this.realTimeVisPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED), "Real Time Visualization"));
         this.compareGraphsPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED), "Compare Graphs"));
+        this.exportPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED), "Export"));
+        this.clusteringPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED), "Clustering"));
 
         this.scrollPane = new JScrollPane();
         this.scrollPane.setViewportView(this.mainPanel);
         this.scrollPane.setPreferredSize(new Dimension(cytoPanelWidth.intValue(),cytoPanelHeight.intValue()));
         this.scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        this.scrollPane.setMaximumSize(new Dimension(360, 1000000));
+        this.scrollPane.setMaximumSize(new Dimension(((Double)(mainPanelWidth * 0.1875)).intValue(), 1000000));
     }
 
     public void initializeAppNameToolbox(){
         this.appNamePanel = new JPanel();
         this.appName = new JLabel();
         appName.setText("CytoVisToolBox");
-        appName.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.5)).intValue(), ((Double)(mainPanelHeight * 0.04)).intValue()));
+        appName.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.5)).intValue(), ((Double)(mainPanelHeight * 0.0260)).intValue()));
         appName.setFont(new Font("Serif",Font.BOLD,18));
         appNamePanel.add(appName);
         appNamePanel.setLayout(new FlowLayout(FlowLayout.CENTER));
@@ -260,36 +308,40 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         this.visStyleFileNameLabel = new JLabel("None");
         this.saxonFileNameLabel = new JLabel("None");
         this.extractFilesButton = new JButton("Extract Files");
-        chooseSaxonButton.setPreferredSize(new Dimension(138,22));
-        chooseVisStyleButton.setPreferredSize(new Dimension(138,22));
-        chooseXmlButton.setPreferredSize(new Dimension(138,22));
-        saxonFileNameLabel.setPreferredSize(new Dimension(138,22));
-        xmlFileNameLabel.setPreferredSize(new Dimension(138,22));
-        visStyleFileNameLabel.setPreferredSize(new Dimension(138,22));
-        extractFilesButton.setPreferredSize(new Dimension(278,26));
+
+        chooseSaxonButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/2.2)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        chooseVisStyleButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/2.2)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        chooseXmlButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/2.2)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        saxonFileNameLabel.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/2.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        xmlFileNameLabel.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/2.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        visStyleFileNameLabel.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/2.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        extractFilesButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/1.15)).intValue(),((Double)(mainPanelWidth * 0.07)).intValue()));
     }
 
     public void initializeImportToolBox(){
-        this.importVisStyleButton = new JButton("<html>Import<br/>Visual Style</html>");
+        this.importVisStyleButton = new JButton("<html>Import<br/>Vis Style</html>");
         this.importNetworkButton = new JButton("<html>Import<br/>Network</html>");
         this.importTableButton = new JButton("<html>Import<br/>Table</html>");
         this.statusLabel = new JLabel();
-        importVisStyleButton.setPreferredSize(new Dimension(90,40));
-        importNetworkButton.setPreferredSize(new Dimension(90,40));
-        importTableButton.setPreferredSize(new Dimension(90,40));
-        statusLabel.setPreferredSize(new Dimension(280, 22));
+        importVisStyleButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/3.3)).intValue(),(provoPanel.getPreferredSize().width/9)));
+        importNetworkButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/3.7)).intValue(),(provoPanel.getPreferredSize().width/9)));
+        importTableButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/3.7)).intValue(),(provoPanel.getPreferredSize().width/9)));
+        statusLabel.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/1.28)).intValue(), ((Double)(mainPanelWidth * 0.06)).intValue()));
     }
 
     public void initializeShowHideToolbox(){
         this.showOnly = new JComboBox();
         this.hide = new JComboBox();
         this.highLight = new JComboBox();
+        this.showOnly.setPreferredSize(new Dimension(new Dimension(((Double)(provoPanel.getPreferredSize().width/4.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue())));
+        this.hide.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/4.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        this.highLight.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/4.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
         this.showOnlyButton = new JButton("Action");
         this.highLightButton = new JButton("Action");
         this.hideButton = new JButton("Action");
-        this.showOnlyButton.setPreferredSize(new Dimension(80,22));
-        this.hideButton.setPreferredSize(new Dimension(80,22));
-        this.highLightButton.setPreferredSize(new Dimension(80,22));
+        this.showOnlyButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/4.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        this.hideButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/4.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
+        this.highLightButton.setPreferredSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/4.5)).intValue(),((Double)(mainPanelWidth * 0.06)).intValue()));
         this.showOnlyPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED),"Show Only"));
         this.hidePanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED),"Hide"));
         this.highLightPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createBevelBorder(BevelBorder.RAISED),"Highlight"));
@@ -297,7 +349,7 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
 
     public void initializeRelationsPanel(){
         this.showHideRelationButton = new JButton("Show / Hide Entity Relation");
-        this.showHideRelationButton.setPreferredSize(new Dimension(260,40));
+        this.showHideRelationButton.setPreferredSize(new Dimension(230,40));
     }
 
     public void initializeVisualStyleTemplatesToolBox(){
@@ -308,19 +360,26 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         this.vsTemplate1Label = new JLabel("Visual Style Template 1: ");
         this.vsTemplate2Label = new JLabel("Visual Style Template 2: ");
         this.vsTemplate3Label = new JLabel("Visual Style Template 3: ");
-        this.vsTemplate1Label.setSize(new Dimension(200, 25));
-        this.vsTemplate2Label.setSize(new Dimension(200, 25));
-        this.vsTemplate3Label.setSize(new Dimension(200, 25));
+        this.vsTemplate1Label.setSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/1.8)).intValue(), ((Double)(mainPanelWidth * 0.07)).intValue()));
+        this.vsTemplate2Label.setSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/1.8)).intValue(), ((Double)(mainPanelWidth * 0.07)).intValue()));
+        this.vsTemplate3Label.setSize(new Dimension(((Double)(provoPanel.getPreferredSize().width/1.8)).intValue(), ((Double)(mainPanelWidth * 0.07)).intValue()));
         this.visualStyleTemplatesPanel.setLayout(new FlowLayout(FlowLayout.CENTER));
     }
 
     public void initializeSortPanel(){
         this.entityBasedSorting = new JButton("<html>Entity Based<br/>Sort</html");
-        this.sortActivitiesByTime = new JButton("<html>Sort Activities<br/> by Time</html>");
+        this.sortActivitiesByTime = new JButton("<html>Activity<br/>Based Sort</html>");
 
-        this.entityBasedSorting.setPreferredSize(new Dimension(((Double)(mainPanelWidth*0.39)).intValue(),40));
-        this.sortActivitiesByTime.setPreferredSize(new Dimension(((Double)(mainPanelWidth*0.39)).intValue(),40));
-        this.sortPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+        this.entityBasedSorting.setPreferredSize(new Dimension(((Double)(mainPanelWidth*0.36)).intValue(),((Double)(mainPanelWidth * 0.11)).intValue()));
+        this.sortActivitiesByTime.setPreferredSize(new Dimension(((Double)(mainPanelWidth*0.36)).intValue(),((Double)(mainPanelWidth * 0.11)).intValue()));
+        this.sortPanel.setLayout(new FlowLayout(FlowLayout.CENTER));
+    }
+
+    public void initializeClusteringPanel(){
+        this.startClusteringButton = new JButton("Start Clustering");
+        this.clusteringSpinner     = new JSpinner(new SpinnerNumberModel(0, 0, 20, 1));
+
+        startClusteringButton.setMargin(new Insets(5,5,5,5));
     }
 
     public void initializeShowRelationsToolbox(){
@@ -337,8 +396,8 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         this.groupByNodeTypeButton = new JButton("<html>Group By <br/>Node Type</html>");
         this.showNodeProperties = new JButton("Show Node Properties");
 
-        this.showNodeProperties.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.85)).intValue(), 40));
-        this.groupByNodeTypeButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), 40));
+        this.showNodeProperties.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.80)).intValue(), ((Double)(mainPanelWidth * 0.11)).intValue()));
+        this.groupByNodeTypeButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), ((Double)(mainPanelWidth * 0.11)).intValue()));
     }
 
     public void initializeSliderToolbox(){
@@ -352,15 +411,15 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         this.sliderVisualization = new SliderVisualization(this);
         this.sliderLabel = new JLabel();
         this.sliderLabel.setText("None");
-        this.sliderLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.8)).intValue(), 25));
+        this.sliderLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.8)).intValue(), ((Double)(mainPanelWidth * 0.07)).intValue()));
         this.sliderLabel.setFont(new Font("Serif",Font.BOLD,12));
-        sliderCheckBox.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.06)).intValue(), 25));
+        sliderCheckBox.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.06)).intValue(), ((Double)(mainPanelWidth * 0.07)).intValue()));
         sliderCheckBox.setSelected(false);
-        slider.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.65)).intValue(), 25));
-        svLeftArrow.setPreferredSize(new Dimension(32, 32));
-        svRightArrow.setPreferredSize(new Dimension(32, 32));
-        svPlay.setPreferredSize(new Dimension(32,32));
-        svStop.setPreferredSize(new Dimension(32,32));
+        slider.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.65)).intValue(), ((Double)(mainPanelWidth * 0.07)).intValue()));
+        svLeftArrow.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.09)).intValue(), ((Double)(mainPanelWidth * 0.09)).intValue()));
+        svRightArrow.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.09)).intValue(), ((Double)(mainPanelWidth * 0.09)).intValue()));
+        svPlay.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.09)).intValue(), ((Double)(mainPanelWidth * 0.09)).intValue()));
+        svStop.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.09)).intValue(), ((Double)(mainPanelWidth * 0.09)).intValue()));
     }
 
     public void initializeRealTimeVisToolBox(){
@@ -372,7 +431,7 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
 
         this.nodeCount = new JSpinner();
         this.nodeCountString = new JLabel("Maximum Node Count: ");
-        this.nodeCountString.setPreferredSize(new Dimension(((Double)(mainPanelWidth*0.5)).intValue(), ((Double)(mainPanelHeight*0.016)).intValue()));
+        this.nodeCountString.setPreferredSize(new Dimension(((Double)(mainPanelWidth*0.5)).intValue(), ((Double)(mainPanelHeight*0.014)).intValue()));
         nodeCount.setValue(20);
         setMaxNode(20);
 
@@ -381,15 +440,41 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
     }
 
     public void initializeCompareGraphsPanel(){
-        this.chooseFirstGraphsEdgeButton = new JButton("Choose Edge");
-        this.chooseFirstGraphsNodeButton = new JButton("Choose Node");
-        this.chooseSecondGraphsNodeButton = new JButton("Choose Node");
-        this.chooseSecondGraphsEdgeButton = new JButton("Choose Edge");
+        this.chooseFirstGraphsEdgeButton    = new JButton("Choose Edge");
+        this.chooseFirstGraphsNodeButton    = new JButton("Choose Node");
+        this.chooseSecondGraphsNodeButton   = new JButton("Choose Node");
+        this.chooseSecondGraphsEdgeButton   = new JButton("Choose Edge");
+        this.importGraphsButton             = new JButton("Import");
+        this.getBackwardProvenanceButton    = new JButton("<html>Get Backward<br/>Dependencies</html>");
+        this.showAllNodesEdges              = new JButton("<html>Show All <br/>Nodes and Edges</html>");
+
+        this.compareAllProperties           = new JCheckBox("Include all properties to comparison");
+        this.nodeWeight                     = new JSpinner(new SpinnerNumberModel(0.0, -1000.0, 1000.0, 0.1));
+        this.edgeWeight                     = new JSpinner(new SpinnerNumberModel(0.0, -1000.0, 1000.0, 0.1));
+        this.neighbourNodeWeight            = new JSpinner(new SpinnerNumberModel(0.0, -1000.0, 1000.0, 0.1));
+        this.threshold                      = new JSpinner(new SpinnerNumberModel(0.1, 0.0, 1, 0.1));
+        this.nodeWeightLabel                = new JLabel("Node Weight:");
+        this.edgeWeightLabel                = new JLabel("Edge Weight:");
+        this.neighbourNodeWeightLabel       = new JLabel("Adjacent Node Weight:");
+        this.thresholdLabel                 = new JLabel("Threshold:");
 
         chooseFirstGraphsNodeButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), 30));
         chooseFirstGraphsEdgeButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), 30));
         chooseSecondGraphsNodeButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), 30));
         chooseSecondGraphsEdgeButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), 30));
+        importGraphsButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.39)).intValue(), 30));
+        compareAllProperties.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.75)).intValue(), 30));
+        getBackwardProvenanceButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), 50));
+        showAllNodesEdges.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), 50));
+
+        nodeWeight.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.20)).intValue(), 30));
+        edgeWeight.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.20)).intValue(), 30));
+        neighbourNodeWeight.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.20)).intValue(), 30));
+        threshold.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.20)).intValue(), 30));
+        this.nodeWeightLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.60)).intValue(), 30));
+        this.edgeWeightLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.60)).intValue(), 30));
+        this.neighbourNodeWeightLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.60)).intValue(), 30));
+        this.thresholdLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.60)).intValue(), 30));
 
         this.firstGraphsEdgeLabel = new JLabel("None");
         this.firstGraphsNodeLabel = new JLabel("None");
@@ -402,7 +487,7 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         secondGraphsNodeLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.4)).intValue(), 30));
 
         this.compareGraphsButton = new JButton("Compare");
-        compareGraphsButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.83)).intValue(), 30));
+        compareGraphsButton.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.39)).intValue(), 30));
 
         firstGraphLabel = new JLabel("First Graph", SwingConstants.CENTER);
         firstGraphLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.8)).intValue(), 20));
@@ -410,6 +495,17 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         secondGraphLabel = new JLabel("Second Graph", SwingConstants.CENTER);
         secondGraphLabel.setPreferredSize(new Dimension(((Double)(mainPanelWidth * 0.8)).intValue(), 20));
 
+    }
+
+    public void initializeExportPanel(){
+        this.exportPanel.setLayout(new FlowLayout(FlowLayout.CENTER));
+        this.exportAsPngButton   = new JButton("Export as PNG");
+        this.exportNetworkButton = new JButton("Export Network");
+        this.exportTableButton   = new JButton("Export Table");
+
+        this.exportAsPngButton.setPreferredSize(new Dimension(((Double)(exportPanel.getPreferredSize().width*0.6)).intValue(), 30));
+        this.exportTableButton.setPreferredSize(new Dimension(((Double)(exportPanel.getPreferredSize().width*0.6)).intValue(), 30));
+        this.exportNetworkButton.setPreferredSize(new Dimension(((Double)(exportPanel.getPreferredSize().width*0.6)).intValue(), 30));
     }
 
     public void addingComponentsToToolboxPanel(){
@@ -520,13 +616,37 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         compareGraphsPanel.add(chooseSecondGraphsEdgeButton);
         compareGraphsPanel.add(secondGraphsEdgeLabel);
 
+        compareGraphsPanel.add(importGraphsButton);
         compareGraphsPanel.add(compareGraphsButton);
 
+        compareGraphsPanel.add(compareAllProperties);
+        compareGraphsPanel.add(nodeWeightLabel);
+        compareGraphsPanel.add(nodeWeight);
+        compareGraphsPanel.add(edgeWeightLabel);
+        compareGraphsPanel.add(edgeWeight);
+        compareGraphsPanel.add(neighbourNodeWeightLabel);
+        compareGraphsPanel.add(neighbourNodeWeight);
+        compareGraphsPanel.add(thresholdLabel);
+        compareGraphsPanel.add(threshold);
+
+        compareGraphsPanel.add(getBackwardProvenanceButton);
+        compareGraphsPanel.add(showAllNodesEdges);
+    }
+
+    public void addingComponentsToExportPanel(){
+        exportPanel.add(exportAsPngButton);
+        exportPanel.add(exportNetworkButton);
+        exportPanel.add(exportTableButton);
     }
 
     public void addingComponentsToHelpClosePanel(){
         helpExitPanel.add(helpButton);
         helpExitPanel.add(closeButton);
+    }
+
+    public void addingComponentsToClusteringPanel(){
+        clusteringPanel.add(startClusteringButton);
+        clusteringPanel.add(clusteringSpinner);
     }
 
     public void addingComponentsToMainPanel(){
@@ -535,7 +655,9 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         this.mainPanel.add(toolboxPanel);
         this.mainPanel.add(sliderVisualizationPanel);
         this.mainPanel.add(realTimeVisPanel);
+        this.mainPanel.add(clusteringPanel);
         this.mainPanel.add(compareGraphsPanel);
+        this.mainPanel.add(exportPanel);
         this.mainPanel.add(helpExitPanel);
         this.mainPanel.add(versionLabel);
         this.add(scrollPane);
@@ -617,7 +739,7 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
         });
         // Setting action to "Import Network" button
         this.importNetworkButton.setAction(new ImportEdgesAction(cytoVisProject, "C:\\provoTransformerPlugin\\edges.csv"));
-        this.importNetworkButton.addMouseListener(new ImportEdgesRightClickAction(cytoVisProject));
+        this.importNetworkButton.addMouseListener(new ImportEdgesRightClickAction(cytoVisProject, this.backwardDependency));
 
         // Setting action to "Import Visual Style" Button
         this.importTableButton.setAction(new ImportNodesAction(cytoVisProject, "C:\\provoTransformerPlugin\\nodes.csv"));
@@ -881,10 +1003,10 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
             }
         });
 
-        compareGraphsButton.addActionListener(new ActionListener() {
+        importGraphsButton.addActionListener(new ActionListener() {
+            @Override
             public void actionPerformed(ActionEvent actionEvent) {
                 Integer result = compareGraphsCore.compareGraphs();
-                System.out.println("Result: " + result);
                 if(result == 0){
                     JOptionPane.showMessageDialog(adapter.getCySwingApplication().getJFrame(),"Please choose all the files ..!",
                             "Warning!", JOptionPane.INFORMATION_MESSAGE);
@@ -893,9 +1015,177 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
                             "Graphs must have 1 root ..!",
                             "Warning!", JOptionPane.INFORMATION_MESSAGE);
                 }else if(result == 1){
-                    //JOptionPane.showMessageDialog(adapter.getCySwingApplication().getJFrame(), "Similarity: " + compareGraphsCore.getSimilarity(),
-                      //      "Result", JOptionPane.INFORMATION_MESSAGE);
+                    drawComparedGraphs = new DrawComparedGraphs(compareGraphsCore, cytoVisProject);
+                    drawComparedGraphs.draw();
+                    compareGraphsButton.setEnabled(true);
                 }
+            }
+        });
+
+        compareGraphsButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent actionEvent) {
+                compareGraphsCore.createAttendanceList();
+                compareGraphsCore.findSimilarNodePairs();
+                drawComparedGraphs.changeColors(compareGraphsCore);
+            }
+        });
+
+        this.compareAllProperties.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent actionEvent) {
+                if(compareAllProperties.isSelected()){
+                    compareGraphsCore.changeFile(2, Double.parseDouble(nodeWeight.getValue().toString()),
+                            Double.parseDouble(edgeWeight.getValue().toString()), Double.parseDouble(neighbourNodeWeight.getValue().toString()),
+                            Double.parseDouble(threshold.getValue().toString()));
+                    nodeWeight.setEnabled(true);
+                    edgeWeight.setEnabled(true);
+                    neighbourNodeWeight.setEnabled(true);
+                    threshold.setEnabled(true);
+                }else {
+                    compareGraphsCore.changeFile(1, 0.0, 0.0, 0.0,0.0);
+                    nodeWeight.setEnabled(false);
+                    edgeWeight.setEnabled(false);
+                    neighbourNodeWeight.setEnabled(false);
+                    threshold.setEnabled(false);
+                }
+            }
+        });
+
+        nodeWeight.addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent changeEvent) {
+                compareGraphsCore.changeFile(2, Double.parseDouble(nodeWeight.getValue().toString()),
+                        Double.parseDouble(edgeWeight.getValue().toString()), Double.parseDouble(neighbourNodeWeight.getValue().toString()),
+                        Double.parseDouble(threshold.getValue().toString()));
+            }
+        });
+
+        edgeWeight.addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent changeEvent) {
+                compareGraphsCore.changeFile(2, Double.parseDouble(nodeWeight.getValue().toString()),
+                        Double.parseDouble(edgeWeight.getValue().toString()), Double.parseDouble(neighbourNodeWeight.getValue().toString()),
+                        Double.parseDouble(threshold.getValue().toString()));
+            }
+        });
+
+        neighbourNodeWeight.addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent changeEvent) {
+                compareGraphsCore.changeFile(2, Double.parseDouble(nodeWeight.getValue().toString()),
+                        Double.parseDouble(edgeWeight.getValue().toString()), Double.parseDouble(neighbourNodeWeight.getValue().toString()),
+                        Double.parseDouble(threshold.getValue().toString()));
+            }
+        });
+
+        threshold.addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent changeEvent) {
+                compareGraphsCore.changeFile(2, Double.parseDouble(nodeWeight.getValue().toString()),
+                        Double.parseDouble(edgeWeight.getValue().toString()), Double.parseDouble(neighbourNodeWeight.getValue().toString()),
+                        Double.parseDouble(threshold.getValue().toString()));
+            }
+        });
+
+        this.exportTableButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent actionEvent) {
+
+                if(adapter.getCyApplicationManager().getCurrentNetworkView() != null){
+                    ExportTableTaskFactory exportTableTaskFactory = adapter.get_ExportTableTaskFactory();
+                    TaskIterator taskIterator = exportTableTaskFactory.createTaskIterator(adapter.getCyApplicationManager().
+                            getCurrentNetwork().getDefaultNodeTable());
+                    adapter.getTaskManager().execute(taskIterator);
+                }else{
+                    JOptionPane.showMessageDialog(adapter.getCySwingApplication().getJFrame(),"There is no visualization loaded yet ..!",
+                            "Error!", JOptionPane.INFORMATION_MESSAGE);
+                }
+
+            }
+        });
+
+        this.exportNetworkButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent actionEvent) {
+
+                if(adapter.getCyApplicationManager().getCurrentNetworkView() != null){
+                    ExportNetworkViewTaskFactory exportNetworkViewTaskFactory = adapter.get_ExportNetworkViewTaskFactory();
+                    TaskIterator taskIterator = exportNetworkViewTaskFactory.createTaskIterator(adapter.getCyApplicationManager().getCurrentNetworkView());
+                    adapter.getTaskManager().execute(taskIterator);
+                }else{
+                    JOptionPane.showMessageDialog(adapter.getCySwingApplication().getJFrame(),"There is no visualization loaded yet ..!",
+                            "Error!", JOptionPane.INFORMATION_MESSAGE);
+                }
+
+            }
+        });
+
+        this.exportAsPngButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent actionEvent) {
+
+                if(adapter.getCyApplicationManager().getCurrentNetworkView() != null){
+                    ExportNetworkImageTaskFactory exportNetworkImageTaskFactory = adapter.get_ExportNetworkImageTaskFactory();
+                    TaskIterator taskIterator = exportNetworkImageTaskFactory.createTaskIterator(adapter.getCyApplicationManager().getCurrentNetworkView());
+                    adapter.getTaskManager().execute(taskIterator);
+                }else{
+                    JOptionPane.showMessageDialog(adapter.getCySwingApplication().getJFrame(),"There is no visualization loaded yet ..!",
+                            "Error!", JOptionPane.INFORMATION_MESSAGE);
+                }
+
+            }
+        });
+
+        startClusteringButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent actionEvent) {
+
+            }
+        });
+
+        this.getBackwardProvenanceButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent actionEvent) {
+                FilterUtil filterUtil                   = new FilterUtil(adapter.getCyApplicationManager().getCurrentNetwork(), adapter.getCyApplicationManager().getCurrentTable());
+                ArrayList<String> selectedNodeIdList    = filterUtil.getSelectedNodeIdList(adapter, "name");
+                ArrayList<String> nodesToBeShown        = new ArrayList<>();
+                List<CyNode> allNodes                   = adapter.getCyApplicationManager().getCurrentNetwork().getNodeList();
+
+                System.out.println("[" + new SimpleDateFormat( "yyyy-MM-dd HH:mm:ss" ).format(new Date()) + "] Selected Nodes: " + selectedNodeIdList.toString());
+                for (String nodeId : selectedNodeIdList){
+                    nodesToBeShown.addAll(backwardDependency.getBackwardProvenance(nodeId, backwardDependency.getStateCurrent(),
+                            backwardDependency.getRowsCurrent(), backwardDependency.getColumnsCurrent()));
+
+                    System.out.println("[" + new SimpleDateFormat( "yyyy-MM-dd HH:mm:ss" ).format(new Date()) + "] Backward Dependencies of " + nodeId + ": " + backwardDependency.getBackwardProvenance(nodeId, backwardDependency.getStateCurrent(),
+                            backwardDependency.getRowsCurrent(), backwardDependency.getColumnsCurrent()).toString());
+                }
+
+                nodesToBeShown.addAll(selectedNodeIdList);
+                for(CyNode node : allNodes){
+                    if(!nodesToBeShown.contains(filterUtil.getNodeId(node, adapter, "name"))){
+                        System.out.println("[" + new SimpleDateFormat( "yyyy-MM-dd HH:mm:ss" ).format(new Date()) + "] " + filterUtil.getNodeId(node, adapter, "name")
+                            + " is hided.");
+                        adapter.getCyApplicationManager().getCurrentNetworkView().getNodeView(node).setVisualProperty(BasicVisualLexicon.NODE_VISIBLE, false);
+                    }
+                }
+            }
+        });
+
+        this.showAllNodesEdges.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent actionEvent) {
+                List<CyNode> allNodes = adapter.getCyApplicationManager().getCurrentNetwork().getNodeList();
+                List<CyEdge> allEdges = adapter.getCyApplicationManager().getCurrentNetwork().getEdgeList();
+
+                for(CyNode node : allNodes){
+                    adapter.getCyApplicationManager().getCurrentNetworkView().getNodeView(node).setVisualProperty(BasicVisualLexicon.NODE_VISIBLE, true);
+                }
+
+                for(CyEdge edge : allEdges){
+                    adapter.getCyApplicationManager().getCurrentNetworkView().getEdgeView(edge).setVisualProperty(BasicVisualLexicon.NODE_VISIBLE, true);
+                }
+
+                adapter.getCyApplicationManager().getCurrentNetworkView().updateView();
             }
         });
 
@@ -904,7 +1194,7 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
     // This method sets image icons to the buttons of sliderVisualization panel
     public void setIcons(){
         try {
-            Image img = ImageIO.read(getClass().getClassLoader().getResource("next.png"));
+            /*Image img = ImageIO.read(getClass().getClassLoader().getResource("next.png"));
             Image img2 = ImageIO.read(getClass().getClassLoader().getResource("previous.png"));
             Image img3 = ImageIO.read(getClass().getClassLoader().getResource("play.png"));
             Image img4 = ImageIO.read(getClass().getClassLoader().getResource("pause.png"));
@@ -912,7 +1202,7 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
             this.svRightArrow.setIcon(new ImageIcon(img));
             this.svLeftArrow.setIcon(new ImageIcon(img2));
             this.svPlay.setIcon(new ImageIcon(img3));
-            this.svStop.setIcon(new ImageIcon(img4));
+            this.svStop.setIcon(new ImageIcon(img4));*/
 
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -1197,5 +1487,13 @@ public class MyControlPanel extends JPanel implements CytoPanelComponent{
 
     public void setImportTableButton(JButton importTableButton) {
         this.importTableButton = importTableButton;
+    }
+
+    public BackwardDependency getBackwardDependency() {
+        return backwardDependency;
+    }
+
+    public void setBackwardDependency(BackwardDependency backwardDependency) {
+        this.backwardDependency = backwardDependency;
     }
 }

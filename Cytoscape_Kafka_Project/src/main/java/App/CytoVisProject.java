@@ -1,13 +1,13 @@
 package App;
 
 import Action.ControlPanelAction;
-import Base.NetworkDeletedListener;
-import Base.NodeSelectedListener;
-import Base.TableSetListener;
+import Base.*;
 import org.cytoscape.app.swing.AbstractCySwingApp;
 import org.cytoscape.app.swing.CySwingAppAdapter;
 import org.cytoscape.application.swing.CyAction;
 import org.cytoscape.application.swing.CytoPanelComponent;
+import org.cytoscape.io.webservice.events.DataImportFinishedListener;
+import org.cytoscape.model.events.AddedEdgesListener;
 import org.cytoscape.model.events.NetworkDestroyedListener;
 import org.cytoscape.model.events.RowsSetListener;
 
@@ -18,6 +18,7 @@ public class CytoVisProject extends AbstractCySwingApp{
     private MyControlPanel myControlPanel;
     private NodeSelectedListener nodeSelectedListener;
     private TableSetListener tableSetListener;
+    private EdgesAddedListener edgesAddedListener;
 
     public CytoVisProject(CySwingAppAdapter adapter){
         super(adapter);
@@ -29,7 +30,7 @@ public class CytoVisProject extends AbstractCySwingApp{
         ControlPanelAction controlPanelAction = new ControlPanelAction(adapter.getCySwingApplication(),myControlPanel,adapter);
         adapter.getCyServiceRegistrar().registerService(controlPanelAction, CyAction.class,new Properties());
         // Creating and registering a new RowsSetListener
-        this.tableSetListener = new TableSetListener(this);
+        this.tableSetListener = new TableSetListener(this, myControlPanel.getBackwardDependency());
         adapter.getCyServiceRegistrar().registerService(tableSetListener, RowsSetListener.class,new Properties());
         // Creating and registering a new NetworkDestroyedListener
         NetworkDeletedListener networkDeletedListener = new NetworkDeletedListener(this);
@@ -38,6 +39,8 @@ public class CytoVisProject extends AbstractCySwingApp{
         this.nodeSelectedListener = new NodeSelectedListener(this);
         adapter.getCyServiceRegistrar().registerService(nodeSelectedListener,RowsSetListener.class,new Properties());
 
+        this.edgesAddedListener = new EdgesAddedListener(this);
+        adapter.getCyServiceRegistrar().registerService(edgesAddedListener, AddedEdgesListener.class, new Properties());
     }
     // Getter and setter methods
 

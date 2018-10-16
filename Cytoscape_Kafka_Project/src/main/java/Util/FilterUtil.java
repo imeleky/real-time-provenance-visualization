@@ -3,6 +3,7 @@ package Util;
 import java.util.*;
 import java.lang.String;
 
+import org.cytoscape.app.swing.CySwingAppAdapter;
 import org.cytoscape.model.*;
 // This class is for providing some usefull methods for the rest of the program
 public class FilterUtil {
@@ -22,9 +23,11 @@ public class FilterUtil {
         this.rows = table.getAllRows(); // getting all rows
         for (int i=0;i<rows.size();i++){
             // If row contains "filterString" then add the node to the matchingNodes list
-            if(rows.get(i).get(ColName,String.class).contains(filterString)){
-                long suid = rows.get(i).get(CyIdentifiable.SUID, Long.class);
-                matchingNodes.add(network.getNode(suid));
+            if(rows.get(i).get(ColName, String.class) != null){
+                if(rows.get(i).get(ColName,String.class).contains(filterString)){
+                    long suid = rows.get(i).get(CyIdentifiable.SUID, Long.class);
+                    matchingNodes.add(network.getNode(suid));
+                }
             }
         }
         return matchingNodes;
@@ -102,4 +105,61 @@ public class FilterUtil {
         }
         return list;
     }
+
+    public CyNode getNode(String nodeID, CySwingAppAdapter adapter, String idParameter){
+        CyNode result = null;
+
+        ArrayList<CyNode> nodes = getAllNodes();
+        for(CyNode node : nodes){
+            if(adapter.getCyApplicationManager().getCurrentNetwork().getRow(node).get(idParameter, String.class)
+                    .equals(nodeID)){
+                result = node;
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    public String getNodeId(CyNode node, CySwingAppAdapter adapter, String nodeIDString){
+        String nodeId           = new String();
+        List<CyNode> nodes = adapter.getCyApplicationManager().getCurrentNetwork().getNodeList();
+
+        for(CyNode tempNode : nodes){
+            if(tempNode.getSUID() == node.getSUID()){
+                nodeId = adapter.getCyApplicationManager().getCurrentNetwork().getRow(tempNode).get(nodeIDString, String.class);
+                break;
+            }
+        }
+
+        return nodeId;
+    }
+
+    // This method gets Node ID list of selected nodes
+    public ArrayList<String> getSelectedNodeIdList(CySwingAppAdapter adapter, String nodeIdColumnName){
+        ArrayList<String> selectedNodeIdList = new ArrayList<>();
+
+        List<CyRow> allRows = adapter.getCyApplicationManager().getCurrentNetwork().getDefaultNodeTable().getAllRows();
+        for(CyRow row : allRows){
+            if(row.get("selected", Boolean.class)){
+                selectedNodeIdList.add(row.get(nodeIdColumnName, String.class));
+            }
+        }
+
+        return selectedNodeIdList;
+    }
+
+    // Get neighbours of the nodes that id list's is given in the arraylist
+    public ArrayList<CyNode> getNeighbourList(CySwingAppAdapter adapter, ArrayList<String> nodesToFindNeighbours){
+        ArrayList<CyNode> neighbours = new ArrayList<>();
+        CyNode temp;
+
+        for(String nodeId : nodesToFindNeighbours){
+            temp = getNode(nodeId, adapter, "Node ID");
+            neighbours.addAll(adapter.getCyApplicationManager().getCurrentNetwork().getNeighborList(temp, CyEdge.Type.ANY));
+        }
+
+        return neighbours;
+    }
+
 }
