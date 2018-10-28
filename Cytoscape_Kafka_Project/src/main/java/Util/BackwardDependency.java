@@ -120,10 +120,10 @@ public class BackwardDependency {
         System.out.println("Purge Columns: " + columnsPurge.toString());
 
         System.out.println("Current Matrix:");
-        printMatrix(stateCurrent);
+        printMatrix(stateCurrent);  //imy -->  printMatrix metodlarını perf ölçümleri sırasında // yapalım.
 
         System.out.println("Purge Matrix:");
-        printMatrix(statePurge);
+        printMatrix(statePurge);   //imy -->  printMatrix metodlarını perf ölçümleri sırasında // yapalım.
 
         System.out.println("[" + new SimpleDateFormat( "yyyy-MM-dd HH:mm:ss" ).format(new Date()) + "] New edge --> Source: " + sourceNode + " ->> Destination: " + destNode);
         // if incoming source node is a new value of a variable then cache current state and remove source node from current stat
@@ -152,6 +152,20 @@ public class BackwardDependency {
                 stateCurrent.get(stateCurrent.size()-1).add(new Integer(0));
             }
         }
+        
+        /*imy
+        Erkan selam;
+        
+        StateCurrent ile matrix kulllanmak yerine StateCurrent<string yada integer, ArrayList<Integer>> kullanabilir miyiz performans ölçümü için.
+        Bu şekilde, ust adımlarda yaptıgın gibi ilklendırırken for ile gezerek 0 lamana gerek kalmaz. Sadece iliskili olan nodeları bu nodeun
+        hashmap te karşılık gelen listeye ekleyebiliriz. Bunu da purge ile boşaltmadan eski değerleri silmeden,  yeni dependency e ekleyebiliriz.
+        
+        Performans olarak en azından 2 for artıya gecerız, matrix için her iliski için olmasa da yer tutmayız , inputVars sıralı eklemesini daha yukarıda
+        ki adımlara alabiliriz.
+       
+        ilk adım olarak buna bakabilir miyiz?
+       
+        */
 
         // If destination node is not in the matrix, add it to the matrix and also to columns list
         // After that, add new dependency sourceNode --> destNode
@@ -187,7 +201,7 @@ public class BackwardDependency {
         printMatrix(stateCurrent);
 
         System.out.println("Purge Matrix:");
-        printMatrix(statePurge);
+        printMatrix(statePurge); //imy -->  printMatrix metodlarını perf ölçümleri sırasında // yapalım.
     }
 
     // Bütün bir satır çekilemez mi??
